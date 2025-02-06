@@ -1,0 +1,30 @@
+1. Unit of thermal conductivity in M.K.S units is _______________
+a) kcal/kg m2°C
+b) kcal-m/hr m2°C
+c) kcal/hr m2°C
+d) kcal-m/hr°C
+e) kcal-m/m2°C
+2. Unit of thermal conductivity in S.I units is _______________
+a) j/m2 sec
+b) J/m °K sec
+c) W/m °K
+d) a. and c. above
+e) b. and c. above
+3. Thermal conductivity of solid metals with rise in temperature normally
+a) increases
+b) decreases
+c) remains constant
+d) may increases or decrease depending on temperature
+e) unpredictable.
+4. Heat transfer takes place as per--
+a) zeroth law of thermodynamics
+b) first law of thermodynamics
+c) second law of thermodynamics
+d) Kirchoff's law E.Stefan's law
+e) none of the above
+5. Heat is closely related with
+a) liquids
+b) energy
+c) temperature
+d) entropy
+e) enthalpy
