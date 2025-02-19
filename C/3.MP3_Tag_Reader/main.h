@@ -1,7 +1,8 @@
 #ifndef MAIN_H
 #define MAIN_H
 
-typedef enum {
+typedef enum
+{
   e_invalid = -1,
   e_success = 0,
   e_failed = 1,

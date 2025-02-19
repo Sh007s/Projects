@@ -37,10 +37,11 @@ int main(int argc, char *argv[])
         printf("Use ./mp3_tag_reader -h for help\n");
         return e_failed;
     }
-       if (argc < 2) {
-         printf("Usage : %s <Filename>\n", argv[0]);    //
-              return e_failed;
-       }
+    if (argc < 2)
+    {
+        printf("Usage : %s <Filename>\n", argv[0]); //
+        return e_failed;
+    }
 
     if (strcmp(argv[1], "-h") == 0)
     {
@@ -68,7 +69,7 @@ int main(int argc, char *argv[])
         printf("ERROR: Incorrect format of Command line Arguments.\n");
         printf("Use ./mp3_tag_reader -h for help\n\t\t\t\tor\n");
         display_help();
-        
+
         return e_failed;
     }
 

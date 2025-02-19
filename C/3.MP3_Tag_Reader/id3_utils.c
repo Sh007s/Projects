@@ -2,9 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-TagData *create_tag_data() {
+TagData *create_tag_data()
+{
   TagData *data = (TagData *)malloc(sizeof(TagData));
-  if (data) {
+  if (data)
+  {
     data->version = NULL;
     data->title = NULL;
     data->artist = NULL;
@@ -17,8 +19,10 @@ TagData *create_tag_data() {
   return data;
 }
 
-void free_tag_data(TagData *data) {
-  if (data) {
+void free_tag_data(TagData *data)
+{
+  if (data)
+  {
     free(data->version);
     free(data->title);
     free(data->artist);

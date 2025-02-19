@@ -1,7 +1,8 @@
 #ifndef ID3_UTILS_H
 #define ID3_UTILS_H
 
-typedef struct {
+typedef struct
+{
   char *version; /**< Version of the ID3 tag */
   char *title;   /**< Title of the song */
   char *artist;  /**< Artist of the song */
