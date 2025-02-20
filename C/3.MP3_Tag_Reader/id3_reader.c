@@ -29,20 +29,6 @@ const char *genres[] = {
     "New Wave", "Psychadelic", "Rave", "Showtunes", "Trailer", "Lo-Fi", "Tribal",
     "Acid Punk", "Acid Jazz", "Polka", "Retro", "Musical", "Rock & Roll", "Hard Rock"};
 
-// Predefined ID3v1 genres array
-const char *id3v1_genres[] = {
-    "Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop",
-    "Jazz", "Metal", "New Age", "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae", "Rock",
-    "Techno", "Industrial", "Alternative", "Ska", "Death Metal", "Pranks", "Soundtrack",
-    "Euro-Techno", "Ambient", "Trip-Hop", "Vocal", "Jazz+Funk", "Fusion", "Trance", "Classical",
-    "Instrumental", "Acid", "House", "Game", "Sound Clip", "Gospel", "Noise", "AlternRock",
-    "Bass", "Soul", "Punk", "Space", "Meditative", "Instrumental Pop", "Instrumental Rock",
-    "Ethnic", "Gothic", "Darkwave", "Techno-Industrial", "Electronic", "Pop-Folk", "Eurodance",
-    "Dream", "Southern Rock", "Comedy", "Cult", "Gangsta", "Top 40", "Christian Rap",
-    "Pop/Funk", "Jungle", "Native American", "Cabaret", "New Wave", "Psychedelic", "Rave",
-    "Showtunes", "Trailer", "Lo-Fi", "Tribal", "Acid Punk", "Acid Jazz", "Polka", "Retro",
-    "Musical", "Rock & Roll", "Hard Rock", "Unknown"};
-
 TagData *read_id3_tags(const char *filename)
 {
     // Implementation for reading ID3 tags
@@ -86,98 +72,23 @@ TagData *read_id3_tags(const char *filename)
     //  data->genre = malloc(sizeof(char));
 
     // Get genre
-    unsigned char genre_code = tag[127];
-    printf("Genre code: %d\n", genre_code); // Debugging
-    if (genre_code == 255)
-    {
-        //      data->genre = strdup("No Genre");
-    }
-    else if (genre_code < sizeof(genres) / sizeof(genres[0]))
-    {
-        data->genre = strdup(genres[genre_code]);
-    }
-    else
-    {
-        //    data->genre = strdup("Unknown");
-    }
-
+      unsigned char genre_code = tag[127];
+      printf("Genre code: %d\n", genre_code); // Debugging
+      if (genre_code == 255)
+      {
+          //      data->genre = strdup("No Genre");
+      }
+      else if (genre_code < sizeof(genres) / sizeof(genres[0]))
+      {
+          data->genre = strdup(genres[genre_code]);
+      }
+      else
+      {
+          //    data->genre = strdup("Unknown");
+      }
+  
     return data;
 }
-
-/*
-TagData *read_id32_tags(const char *filename)
-{
-    // Open the file in binary read mode
-    FILE *fp = fopen(filename, "rb");
-    if (!fp)
-    {
-        printf("Failed to open file\n");
-        return NULL;
-    }
-
-    char header[10];
-    size_t bytesRead = fread(header, sizeof(char), 10, fp);
-    printf("%ld\n", bytesRead);
-
-    if (bytesRead < 10 || strncmp(header, "ID3", 3) != 0)
-    {
-        fclose(fp); // Close the file if ID3 header is not found
-        return NULL;
-    }
-
-    unsigned char version[2] = {header[3], header[4]};
-    unsigned int size;
-    // memcpy(version, header + 3, 2);
-    size = (header[6] << 21) | (header[7] << 14) | (header[8] << 7) | (header[9]);
-
-    //  size = ((header[6] & 0x7F) << 21) | ((header[7] & 0x7F ) << 14) | ((header[8] & 0x7F)  << 7) | ((header[9] & 0x7F) );
-
-    char *buff = malloc(size + 1);
-    if (!buff)
-    {
-        fclose(fp);
-        return NULL;
-    }
-    fread(buff, 1, size, fp);
-    buff[size] = '\0';
-    fclose(fp);
-
-    printf("Size of %d\n", size);
-    // Allocate memory for the TagData structure
-    TagData *data = malloc(sizeof(TagData));
-    if (!data)
-    {
-        fclose(fp); // Close the file if memory allocation fails
-        printf("Failed to allocate memory for TagData\n");
-        return NULL;
-    }
-
-    // Store the full version in the TagData structure
-    char version_str[10];
-    snprintf(version_str, sizeof(version_str), "ID3v2.%d.%d", version[0], version[1]);
-    data->version = strdup(version_str);
-
-    for (int i = 0; i < size - 10; i++)
-    {
-        if (strncmp(&buff[i], "TCON", 4) == 0)
-        {
-            int frame_size = (buff[i + 4] << 24) | (buff[i + 5] << 16) |
-                             (buff[i + 6] << 8) | (buff[i + 7]);
-            if (frame_size > 0 && i + 11 + frame_size <= size)
-            {
-                char *genre = strndup(&buff[i + 11], frame_size - 1);
-            }
-            break;
-
-            // free(buff);
-            // return genre;
-        }
-    }
-    // Close the file and return the data
-    fclose(fp);
-    return data;
-}
-*/
 
 TagData *read_id32_tags(const char *filename)
 {
@@ -223,7 +134,7 @@ TagData *read_id32_tags(const char *filename)
         free(buff);
         return NULL;
     }
-    memset(data, 0 ,sizeof(TagData));
+    memset(data, 0, sizeof(TagData));
     // Store version
     char version_str[10];
     snprintf(version_str, sizeof(version_str), "ID3v2.%d.%d", version[0], version[1]);
@@ -388,15 +299,15 @@ void view_tags(const char *filename)
     }
 
     display_metadata(data);
-    free_tag_data(data);  // Free allocated memory after usage
+    free_tag_data(data); // Free allocated memory after usage
 
-//     TagData *data1 = read_id32_tags(filename);
-//     if (!data1)
-//     {
-//         display_error("Failed to read ID3v2 tags.");
-//         return;
-//     }
+    TagData *data1 = read_id32_tags(filename);
+    if (!data1)
+    {
+        display_error("Failed to read ID3v2 tags.");
+        return;
+    }
 
-//     display_metadata(data1);
-//    // free_tag_data(data1);  // Free allocated memory after usage
+    display_metadata(data1);
+    // free_tag_data(data1);  // Free allocated memory after usage
 }
