@@ -43,7 +43,6 @@ const char *id3v1_genres[] = {
     "Showtunes", "Trailer", "Lo-Fi", "Tribal", "Acid Punk", "Acid Jazz", "Polka", "Retro",
     "Musical", "Rock & Roll", "Hard Rock", "Unknown"};
 
- 
 TagData *read_id3_tags(const char *filename)
 {
     // Implementation for reading ID3 tags
@@ -91,7 +90,7 @@ TagData *read_id3_tags(const char *filename)
     printf("Genre code: %d\n", genre_code); // Debugging
     if (genre_code == 255)
     {
-  //      data->genre = strdup("No Genre");
+        //      data->genre = strdup("No Genre");
     }
     else if (genre_code < sizeof(genres) / sizeof(genres[0]))
     {
@@ -99,7 +98,7 @@ TagData *read_id3_tags(const char *filename)
     }
     else
     {
-    //    data->genre = strdup("Unknown");
+        //    data->genre = strdup("Unknown");
     }
 
     return data;
@@ -224,7 +223,7 @@ TagData *read_id32_tags(const char *filename)
         free(buff);
         return NULL;
     }
-
+    memset(data, 0 ,sizeof(TagData));
     // Store version
     char version_str[10];
     snprintf(version_str, sizeof(version_str), "ID3v2.%d.%d", version[0], version[1]);
@@ -387,16 +386,17 @@ void view_tags(const char *filename)
         display_error("Failed to read ID3 tags.");
         return;
     }
-    //   printf("%s\n", filename);
-
- //   TagData *data = read_id32_tags(filename);
-    if (data)
-    {
-        free(data->version);
-        data->version = data->version;
-        // free_tag_data(data1);
-    }
 
     display_metadata(data);
-   // free_tag_data(data);
+    free_tag_data(data);  // Free allocated memory after usage
+
+//     TagData *data1 = read_id32_tags(filename);
+//     if (!data1)
+//     {
+//         display_error("Failed to read ID3v2 tags.");
+//         return;
+//     }
+
+//     display_metadata(data1);
+//    // free_tag_data(data1);  // Free allocated memory after usage
 }
