@@ -6,17 +6,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
+#include <ctype.h>
+#include <iconv.h>
+#include <errno.h>
 #include "id3_reader.h"
 #include "error_handling.h"
 #include "main.h"
-#include <ctype.h>
 
-// Define MIN macro at the top
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define TAG_SIZE 128
 #define ID3V2_HEADER_SIZE 10
+#define MAX_FRAME_SIZE 1048576
+#define MAX_STRING_LENGTH 1024
 
-const char *genres[] = {
+// Supported Korean character encodings
+static const char *korean_encodings[] = {
+    "EUC-KR",
+    "CP949",
+    "UHC",
+    "JOHAB",
+    NULL};
+
+// ID3v1 Genre list
+static const char *genres[] = {
     "Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop",
     "Jazz", "Metal", "New Age", "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae",
     "Rock", "Techno", "Industrial", "Alternative", "Ska", "Death Metal", "Pranks",
@@ -29,285 +42,388 @@ const char *genres[] = {
     "New Wave", "Psychadelic", "Rave", "Showtunes", "Trailer", "Lo-Fi", "Tribal",
     "Acid Punk", "Acid Jazz", "Polka", "Retro", "Musical", "Rock & Roll", "Hard Rock"};
 
-TagData *read_id3_tags(const char *filename)
+static unsigned int decode_synchsafe(const unsigned char bytes[4])
 {
-    // Implementation for reading ID3 tags
+    return ((bytes[0] & 0x7f) << 21) |
+           ((bytes[1] & 0x7f) << 14) |
+           ((bytes[2] & 0x7f) << 7) |
+           (bytes[3] & 0x7f);
+}
+
+static int is_korean_text(const unsigned char *buf, size_t len)
+{
+    for (size_t i = 0; i < len - 1; i++)
+    {
+        if ((buf[i] == 0xEA || buf[i] == 0xEB) &&
+            (buf[i + 1] >= 0x80 && buf[i + 1] <= 0xBF))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static char *convert_encoding(const char *input, size_t input_len, const char *from_charset)
+{
+    if (!input || input_len == 0 || !from_charset)
+    {
+        return NULL;
+    }
+
+    iconv_t cd = iconv_open("UTF-8", from_charset);
+    if (cd == (iconv_t)-1)
+    {
+        return NULL;
+    }
+
+    size_t out_len = input_len * 4;
+    char *output = malloc(out_len + 1);
+    if (!output)
+    {
+        iconv_close(cd);
+        return NULL;
+    }
+
+    char *input_ptr = (char *)input;
+    char *output_ptr = output;
+    size_t input_left = input_len;
+    size_t output_left = out_len;
+
+    if (iconv(cd, &input_ptr, &input_left, &output_ptr, &output_left) != (size_t)-1)
+    {
+        *output_ptr = '\0';
+        iconv_close(cd);
+        return output;
+    }
+
+    free(output);
+    iconv_close(cd);
+    return NULL;
+}
+
+static char *try_korean_encodings(const char *input, size_t input_len)
+{
+    for (int i = 0; korean_encodings[i] != NULL; i++)
+    {
+        char *result = convert_encoding(input, input_len, korean_encodings[i]);
+        if (result)
+        {
+            return result;
+        }
+    }
+    return NULL;
+}
+
+static char *get_frame_content(const char *buffer, int size)
+{
+    if (size <= 1)
+    {
+        return NULL;
+    }
+
+    unsigned char encoding = buffer[0];
+    char *result = NULL;
+
+    switch (encoding)
+    {
+    case 0:
+    { // ISO-8859-1 or potential Korean
+        if (is_korean_text((const unsigned char *)buffer + 1, size - 1))
+        {
+            result = try_korean_encodings(buffer + 1, size - 1);
+            if (result)
+            {
+                return result;
+            }
+        }
+        return convert_encoding(buffer + 1, size - 1, "ISO-8859-1");
+    }
+
+    case 1:
+    { // UTF-16 with BOM
+        int bom_offset = 1;
+        const char *encoding_name = "UTF-16";
+
+        if (size > 3)
+        {
+            if ((unsigned char)buffer[1] == 0xFF && (unsigned char)buffer[2] == 0xFE)
+            {
+                encoding_name = "UTF-16LE";
+                bom_offset = 3;
+            }
+            else if ((unsigned char)buffer[1] == 0xFE && (unsigned char)buffer[2] == 0xFF)
+            {
+                encoding_name = "UTF-16BE";
+                bom_offset = 3;
+            }
+        }
+        return convert_encoding(buffer + bom_offset, size - bom_offset, encoding_name);
+    }
+
+    case 2: // UTF-16BE without BOM
+        return convert_encoding(buffer + 1, size - 1, "UTF-16BE");
+
+    case 3:
+    { // UTF-8
+        result = malloc(size);
+        if (result)
+        {
+            memcpy(result, buffer + 1, size - 1);
+            result[size - 1] = '\0';
+        }
+        return result;
+    }
+
+    default:
+        return NULL;
+    }
+}
+
+static char *get_comment_content(const char *buffer, int size)
+{
+    if (size <= 4)
+    {
+        return NULL;
+    }
+
+    unsigned char encoding = buffer[0];
+    const char *description_start = buffer + 4;
+    int desc_len = 0;
+
+    switch (encoding)
+    {
+    case 0: // ISO-8859-1
+    case 3: // UTF-8
+        while (desc_len < size - 4 && description_start[desc_len] != 0)
+        {
+            desc_len++;
+        }
+        if (desc_len < size - 4)
+        {
+            return strdup(description_start + desc_len + 1);
+        }
+        break;
+
+    case 1: // UTF-16 with BOM
+    case 2: // UTF-16BE
+        while (desc_len < size - 5 &&
+               !(description_start[desc_len] == 0 && description_start[desc_len + 1] == 0))
+        {
+            desc_len += 2;
+        }
+        if (desc_len < size - 5)
+        {
+            return strdup(description_start + desc_len + 2);
+        }
+        break;
+    }
+
+    return NULL;
+}
+
+TagData *read_id3v2_tags(const char *filename)
+{
+    FILE *file = fopen(filename, "rb");
+    if (!file)
+    {
+        display_error("Cannot open file");
+        return NULL;
+    }
+
+    struct ID3v2_header header;
+    if (fread(&header, 1, sizeof(header), file) != sizeof(header))
+    {
+        display_error("Cannot read ID3 header");
+        fclose(file);
+        return NULL;
+    }
+
+    if (strncmp(header.identifier, "ID3", 3) != 0)
+    {
+        display_error("Not a valid ID3 tag");
+        fclose(file);
+        return NULL;
+    }
+
+    TagData *tag_data = calloc(1, sizeof(TagData));
+    if (!tag_data)
+    {
+        display_error("Memory allocation failed");
+        fclose(file);
+        return NULL;
+    }
+
+    unsigned int tag_size = decode_synchsafe(header.size);
+    char frame_id[5] = {0};
+    unsigned char size_bytes[4];
+    unsigned char flags[2];
+    char *buffer = NULL;
+
+    while (ftell(file) < tag_size + 10)
+    {
+        if (fread(frame_id, 1, 4, file) != 4)
+            break;
+        if (frame_id[0] == 0)
+            break;
+
+        if (fread(size_bytes, 1, 4, file) != 4 ||
+            fread(flags, 1, 2, file) != 2)
+        {
+            break;
+        }
+
+        unsigned int frame_size = decode_synchsafe(size_bytes);
+        if (frame_size == 0 || frame_size > MAX_FRAME_SIZE)
+        {
+            fseek(file, frame_size, SEEK_CUR);
+            continue;
+        }
+
+        buffer = realloc(buffer, frame_size);
+        if (!buffer)
+            break;
+
+        if (fread(buffer, 1, frame_size, file) != frame_size)
+            break;
+
+        char *content = NULL;
+        if (strncmp(frame_id, "COMM", 4) == 0)
+        {
+            content = get_comment_content(buffer, frame_size);
+        }
+        else
+        {
+            content = get_frame_content(buffer, frame_size);
+        }
+
+        if (!content)
+            continue;
+
+        // Store frame content in tag_data
+        if (strncmp(frame_id, "TIT2", 4) == 0)
+            tag_data->title = content;
+        else if (strncmp(frame_id, "TPE1", 4) == 0)
+            tag_data->artist = content;
+        else if (strncmp(frame_id, "TALB", 4) == 0)
+            tag_data->album = content;
+        else if (strncmp(frame_id, "TYER", 4) == 0)
+            tag_data->year = content;
+        else if (strncmp(frame_id, "COMM", 4) == 0)
+            tag_data->comment = content;
+        else if (strncmp(frame_id, "TCON", 4) == 0)
+            tag_data->genre = content;
+        else
+            free(content);
+    }
+
+    free(buffer);
+    fclose(file);
+
+    // Set version string
+    char version_str[16];
+    snprintf(version_str, sizeof(version_str), "ID3v2.%d.%d",
+             header.version[0], header.version[1]);
+    tag_data->version = strdup(version_str);
+
+    return tag_data;
+}
+
+TagData *read_id3v1_tags(const char *filename)
+{
     FILE *fp = fopen(filename, "rb");
     if (!fp)
     {
-        printf("Failed to open file\n");
+        display_error("Failed to open file");
         return NULL;
     }
 
     if (fseek(fp, -TAG_SIZE, SEEK_END) != 0)
     {
-        printf("Error seeking file\n");
+        display_error("Error seeking file");
         fclose(fp);
         return NULL;
     }
 
     char tag[TAG_SIZE];
-    size_t bytesRead = fread(tag, sizeof(char), TAG_SIZE, fp);
-    printf("%ld\n", bytesRead);
-
-    if (bytesRead < TAG_SIZE || (strncmp(tag, "TAG", 3) != 0))
+    if (fread(tag, sizeof(char), TAG_SIZE, fp) != TAG_SIZE ||
+        strncmp(tag, "TAG", 3) != 0)
     {
         fclose(fp);
         return NULL;
     }
 
-    TagData *data = malloc(sizeof(TagData));
+    TagData *data = calloc(1, sizeof(TagData));
     if (!data)
     {
+        display_error("Failed to allocate memory for TagData");
         fclose(fp);
-        printf("Failed to allocate memory for Tagdata\n");
         return NULL;
     }
+
     data->version = strdup("ID3v1");
     data->title = strndup(tag + 3, 30);
     data->artist = strndup(tag + 33, 30);
     data->album = strndup(tag + 63, 30);
     data->year = strndup(tag + 93, 4);
     data->comment = strndup(tag + 97, 30);
-    //  data->genre = malloc(sizeof(char));
 
-    // Get genre
-      unsigned char genre_code = tag[127];
-      printf("Genre code: %d\n", genre_code); // Debugging
-      if (genre_code == 255)
-      {
-          //      data->genre = strdup("No Genre");
-      }
-      else if (genre_code < sizeof(genres) / sizeof(genres[0]))
-      {
-          data->genre = strdup(genres[genre_code]);
-      }
-      else
-      {
-          //    data->genre = strdup("Unknown");
-      }
-  
-    return data;
-}
-
-TagData *read_id32_tags(const char *filename)
-{
-    // Open file
-    FILE *fp = fopen(filename, "rb");
-    if (!fp)
+    // Handle genre
+    unsigned char genre_code = tag[127];
+    if (genre_code < sizeof(genres) / sizeof(genres[0]))
     {
-        printf("Failed to open file\n");
-        return NULL;
+        data->genre = strdup(genres[genre_code]);
+    }
+    else
+    {
+        data->genre = strdup("Unknown");
     }
 
-    // Read ID3v2 header
-    char header[ID3V2_HEADER_SIZE];
-    if (fread(header, 1, ID3V2_HEADER_SIZE, fp) < ID3V2_HEADER_SIZE || strncmp(header, "ID3", 3) != 0)
-    {
-        fclose(fp);
-        return NULL; // Not an ID3v2 file
-    }
-
-    // Extract version and tag size
-    unsigned char version[2] = {header[3], header[4]};
-    unsigned int size = ((header[6] & 0x7F) << 21) |
-                        ((header[7] & 0x7F) << 14) |
-                        ((header[8] & 0x7F) << 7) |
-                        (header[9] & 0x7F);
-
-    // Allocate buffer for ID3 data
-    char *buff = malloc(size + 1);
-    if (!buff)
-    {
-        fclose(fp);
-        return NULL;
-    }
-
-    fread(buff, 1, size, fp);
-    buff[size] = '\0'; // Null-terminate the buffer
     fclose(fp);
-
-    // Allocate memory for TagData
-    TagData *data = malloc(sizeof(TagData));
-    if (!data)
-    {
-        free(buff);
-        return NULL;
-    }
-    memset(data, 0, sizeof(TagData));
-    // Store version
-    char version_str[10];
-    snprintf(version_str, sizeof(version_str), "ID3v2.%d.%d", version[0], version[1]);
-    data->version = strdup(version_str);
-    data->genre = strdup(""); // Default genre
-    printf("Starting tag parsing...\n");
-    int found_tcon = 0;
-
-    // Search for TCON (Genre) frame
-    for (int i = 0; i < size - 10; i++)
-    {
-        if (strncmp(&buff[i], "TCON", 4) == 0)
-        {
-            found_tcon = 1;
-            printf("Found TCON frame at offset %d\n", i);
-
-            int frame_size = ((buff[i + 4] & 0x7F) << 21) |
-                             ((buff[i + 5] & 0x7F) << 14) |
-                             ((buff[i + 6] & 0x7F) << 7) |
-                             (buff[i + 7] & 0x7F);
-
-            printf("Frame size: %d bytes\n", frame_size);
-
-            if (frame_size > 0 && i + 11 + frame_size <= size)
-            {
-                char *genre_start = &buff[i + 11];
-                unsigned char encoding = (unsigned char)genre_start[0];
-
-                printf("Raw frame data (hex): ");
-                for (int j = 0; j < frame_size; j++)
-                {
-                    printf("%02x ", (unsigned char)genre_start[j]);
-                }
-                printf("\n");
-
-                // Free existing genre
-                if (data->genre)
-                {
-                    free(data->genre);
-                    data->genre = NULL;
-                }
-
-                // Check for UTF-16 encoding
-                if (encoding == 1 && frame_size > 3) // UTF-16 with encoding byte
-                {
-                    // Skip encoding byte
-                    genre_start++;
-                    frame_size--;
-
-                    // Skip BOM if present
-                    if (frame_size >= 2 &&
-                        ((unsigned char)genre_start[0] == 0xFF && (unsigned char)genre_start[1] == 0xFE))
-                    {
-                        genre_start += 2;
-                        frame_size -= 2;
-                    }
-
-                    // Convert UTF-16 to ASCII
-                    char *ascii_genre = malloc(frame_size / 2 + 1);
-                    int ascii_pos = 0;
-
-                    for (int j = 0; j < frame_size - 1; j += 2)
-                    {
-                        if (genre_start[j] && !genre_start[j + 1] && isprint(genre_start[j]))
-                        {
-                            ascii_genre[ascii_pos++] = genre_start[j];
-                        }
-                    }
-                    ascii_genre[ascii_pos] = '\0';
-                    data->genre = ascii_genre;
-                }
-                else // ASCII or ISO-8859-1
-                {
-                    // Skip encoding byte if it's 0
-                    if (encoding == 0)
-                    {
-                        genre_start++;
-                        frame_size--;
-                    }
-                    data->genre = strndup(genre_start, frame_size);
-                }
-
-                // Clean up the genre string
-                if (data->genre)
-                {
-                    int len = strlen(data->genre);
-                    // Remove trailing 'C' if present
-                    if (len > 0 && data->genre[len - 1] == 'C')
-                    {
-                        data->genre[len - 1] = '\0';
-                        len--;
-                    }
-
-                    // Remove any trailing whitespace or control characters
-                    while (len > 0 && (data->genre[len - 1] == ' ' ||
-                                       data->genre[len - 1] == 0 ||
-                                       data->genre[len - 1] == '\r' ||
-                                       data->genre[len - 1] == '\n'))
-                    {
-                        data->genre[len - 1] = '\0';
-                        len--;
-                    }
-
-                    // If empty after cleanup, set to Unknown
-                    if (len == 0)
-                    {
-                        free(data->genre);
-                        data->genre = strdup("Unknown Genre");
-                    }
-
-                    printf("Final genre: '%s'\n", data->genre);
-                }
-            }
-            else
-            {
-                printf("Invalid frame size or bounds\n");
-            }
-            break;
-        }
-    }
-
-    if (!found_tcon)
-    {
-        printf("No TCON frame found in file\n");
-        if (data->genre)
-        {
-            free(data->genre);
-        }
-        data->genre = strdup("No Genre");
-    }
-
-    free(buff);
     return data;
 }
 
 void display_metadata(const TagData *data)
 {
-    // Check if the data pointer is NULL
-    if (data == NULL)
+    if (!data)
     {
-        printf("Error: No metadata available.\n");
+        display_error("No metadata available");
         return;
     }
-    // Display each piece of metadata, checking for NULL strings
-    printf("Metadata:\n");
-    printf("Version : %s\n", data->version ? data->version : "N/A");
-    printf("Title   : %s\n", data->title ? data->title : "N/A");
-    printf("Artist  : %s\n", data->artist ? data->artist : "N/A");
-    printf("Album   : %s\n", data->album ? data->album : "N/A");
-    printf("Year    : %s\n", data->year ? data->year : "N/A");
-    printf("Comment : %s\n", data->comment ? data->comment : "N/A");
-    printf("Genre   : %s\n", data->genre ? data->genre : "N/A");
+
+    printf("\nMetadata:\n");
+    printf("----------------------------------------\n");
+    printf("Version : %s\n", data->version ? data->version : "Unknown");
+    printf("Title   : %s\n", data->title ? data->title : "Unknown");
+    printf("Artist  : %s\n", data->artist ? data->artist : "Unknown");
+    printf("Album   : %s\n", data->album ? data->album : "Unknown");
+    printf("Year    : %s\n", data->year ? data->year : "Unknown");
+    printf("Comment : %s\n", data->comment ? data->comment : "Unknown");
+    printf("Genre   : %s\n", data->genre ? data->genre : "Unknown");
+    printf("----------------------------------------\n");
 }
 
 void view_tags(const char *filename)
 {
-    TagData *data = read_id3_tags(filename);
+    // Try ID3v2 first
+    TagData *data = read_id3v2_tags(filename);
+    if (data)
+    {
+        display_metadata(data);
+        free_tag_data(data);
+    }
+
+    // Fall back to ID3v1 if ID3v2 fails
     if (!data)
     {
-        display_error("Failed to read ID3 tags.");
-        return;
+        data = read_id3v1_tags(filename);
+        if (data)
+        {
+            display_metadata(data);
+            free_tag_data(data);
+        }
+        else
+        {
+            display_error("No ID3 tags found in file");
+        }
     }
-
-    display_metadata(data);
-    free_tag_data(data); // Free allocated memory after usage
-
-    TagData *data1 = read_id32_tags(filename);
-    if (!data1)
-    {
-        display_error("Failed to read ID3v2 tags.");
-        return;
-    }
-
-    display_metadata(data1);
-    // free_tag_data(data1);  // Free allocated memory after usage
 }

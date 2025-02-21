@@ -25,7 +25,7 @@ int write_id3_tags(const char *filename, const TagData *data)
 /** TODO: Add documentation as sample given above */
 int edit_tag(const char *filename, const char *tag, const char *value)
 {
-    TagData *data = read_id3_tags(filename);
+    TagData *data = read_id3v1_tags(filename);
     if (!data)
     {
         return 1;
