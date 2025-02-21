@@ -3,22 +3,9 @@
  * @brief Implementation of functions for reading ID3 tags from MP3 files.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
-#include <ctype.h>
-#include <iconv.h>
-#include <errno.h>
 #include "id3_reader.h"
 #include "error_handling.h"
 #include "main.h"
-
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
-#define TAG_SIZE 128
-#define ID3V2_HEADER_SIZE 10
-#define MAX_FRAME_SIZE 1048576
-#define MAX_STRING_LENGTH 1024
 
 // Supported Korean character encodings
 static const char *korean_encodings[] = {
