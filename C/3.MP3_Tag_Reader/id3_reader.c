@@ -8,7 +8,7 @@
 #include "main.h"
 
 // Supported Korean character encodings
-static const char *korean_encodings[] = {
+const char *korean_encodings[] = {
     "EUC-KR",
     "CP949",
     "UHC",
@@ -16,7 +16,7 @@ static const char *korean_encodings[] = {
     NULL};
 
 // ID3v1 Genre list
-static const char *genres[] = {
+const char *genres[] = {
     "Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop",
     "Jazz", "Metal", "New Age", "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae",
     "Rock", "Techno", "Industrial", "Alternative", "Ska", "Death Metal", "Pranks",
@@ -29,7 +29,114 @@ static const char *genres[] = {
     "New Wave", "Psychadelic", "Rave", "Showtunes", "Trailer", "Lo-Fi", "Tribal",
     "Acid Punk", "Acid Jazz", "Polka", "Retro", "Musical", "Rock & Roll", "Hard Rock"};
 
-static unsigned int decode_synchsafe(const unsigned char bytes[4])
+// New helper functions for string cleanup
+static void decode_html_entities(char *str)
+{
+    if (!str)
+        return;
+
+    char *write = str;
+    char *read = str;
+
+    while (*read)
+    {
+        if (strncmp(read, "&quot;", 6) == 0)
+        {
+            *write++ = '"';
+            read += 6;
+        }
+        else if (strncmp(read, "&amp;", 5) == 0)
+        {
+            *write++ = '&';
+            read += 5;
+        }
+        else if (strncmp(read, "&lt;", 4) == 0)
+        {
+            *write++ = '<';
+            read += 4;
+        }
+        else if (strncmp(read, "&gt;", 4) == 0)
+        {
+            *write++ = '>';
+            read += 4;
+        }
+        else
+        {
+            *write++ = *read++;
+        }
+    }
+    *write = '\0';
+}
+
+static void clean_string(char *str)
+{
+    if (!str)
+        return;
+
+    // Remove website references and clean hyphens
+    const char *patterns[] = {
+        "MassTamilan.dev",
+        "PenduJatt.Com",
+        "PenduJatt.net",
+        "SenSongsMp3.Com",
+        "::",
+        " -", // Add space before hyphen to avoid removing hyphens in legitimate names
+        "- ", // Add space after hyphen
+        NULL};
+
+    // First pass: Remove website patterns
+    for (int i = 0; patterns[i]; i++)
+    {
+        char *found = strstr(str, patterns[i]);
+        if (found)
+        {
+            *found = '\0';
+        }
+    }
+
+    // Second pass: Clean up multiple spaces and trim
+    char *read = str;
+    char *write = str;
+    int space = 0;
+
+    while (*read)
+    {
+        // Skip multiple spaces
+        if (isspace(*read))
+        {
+            if (!space)
+            {
+                *write++ = ' ';
+                space = 1;
+            }
+        }
+        else
+        {
+            *write++ = *read;
+            space = 0;
+        }
+        read++;
+    }
+    *write = '\0';
+
+    // Trim trailing whitespace
+    size_t len = strlen(str);
+    while (len > 0 && isspace(str[len - 1]))
+    {
+        str[--len] = '\0';
+    }
+
+    // Trim leading whitespace
+    char *start = str;
+    while (*start && isspace(*start))
+        start++;
+
+    if (start != str)
+    {
+        memmove(str, start, strlen(start) + 1);
+    }
+}
+unsigned int decode_synchsafe(const unsigned char bytes[4])
 {
     return ((bytes[0] & 0x7f) << 21) |
            ((bytes[1] & 0x7f) << 14) |
@@ -37,8 +144,11 @@ static unsigned int decode_synchsafe(const unsigned char bytes[4])
            (bytes[3] & 0x7f);
 }
 
-static int is_korean_text(const unsigned char *buf, size_t len)
+int is_korean_text(const unsigned char *buf, size_t len)
 {
+    if (!buf || len < 2)
+        return 0;
+
     for (size_t i = 0; i < len - 1; i++)
     {
         if ((buf[i] == 0xEA || buf[i] == 0xEB) &&
@@ -50,21 +160,17 @@ static int is_korean_text(const unsigned char *buf, size_t len)
     return 0;
 }
 
-static char *convert_encoding(const char *input, size_t input_len, const char *from_charset)
+char *convert_encoding(const char *input, size_t input_len, const char *from_charset)
 {
     if (!input || input_len == 0 || !from_charset)
-    {
         return NULL;
-    }
 
     iconv_t cd = iconv_open("UTF-8", from_charset);
     if (cd == (iconv_t)-1)
-    {
         return NULL;
-    }
 
     size_t out_len = input_len * 4;
-    char *output = malloc(out_len + 1);
+    char *output = calloc(1, out_len + 1); // Use calloc to ensure null termination
     if (!output)
     {
         iconv_close(cd);
@@ -76,37 +182,37 @@ static char *convert_encoding(const char *input, size_t input_len, const char *f
     size_t input_left = input_len;
     size_t output_left = out_len;
 
-    if (iconv(cd, &input_ptr, &input_left, &output_ptr, &output_left) != (size_t)-1)
+    size_t result = iconv(cd, &input_ptr, &input_left, &output_ptr, &output_left);
+    iconv_close(cd);
+
+    if (result == (size_t)-1)
     {
-        *output_ptr = '\0';
-        iconv_close(cd);
-        return output;
+        SAFE_FREE(output);
+        return NULL;
     }
 
-    free(output);
-    iconv_close(cd);
-    return NULL;
+    return output;
 }
 
-static char *try_korean_encodings(const char *input, size_t input_len)
+char *try_korean_encodings(const char *input, size_t input_len)
 {
+    if (!input || input_len == 0)
+        return NULL;
+
     for (int i = 0; korean_encodings[i] != NULL; i++)
     {
         char *result = convert_encoding(input, input_len, korean_encodings[i]);
-        if (result)
-        {
+        if (result && strlen(result) > 0)
             return result;
-        }
+        SAFE_FREE(result);
     }
     return NULL;
 }
 
-static char *get_frame_content(const char *buffer, int size)
+char *get_frame_content(const char *buffer, int size)
 {
-    if (size <= 1)
-    {
+    if (!buffer || size <= 1)
         return NULL;
-    }
 
     unsigned char encoding = buffer[0];
     char *result = NULL;
@@ -119,17 +225,16 @@ static char *get_frame_content(const char *buffer, int size)
         {
             result = try_korean_encodings(buffer + 1, size - 1);
             if (result)
-            {
                 return result;
-            }
         }
-        return convert_encoding(buffer + 1, size - 1, "ISO-8859-1");
+        result = convert_encoding(buffer + 1, size - 1, "ISO-8859-1");
+        break;
     }
 
     case 1:
     { // UTF-16 with BOM
-        int bom_offset = 1;
         const char *encoding_name = "UTF-16";
+        int bom_offset = 1;
 
         if (size > 3)
         {
@@ -144,50 +249,54 @@ static char *get_frame_content(const char *buffer, int size)
                 bom_offset = 3;
             }
         }
-        return convert_encoding(buffer + bom_offset, size - bom_offset, encoding_name);
+        result = convert_encoding(buffer + bom_offset, size - bom_offset, encoding_name);
+        break;
     }
 
     case 2: // UTF-16BE without BOM
-        return convert_encoding(buffer + 1, size - 1, "UTF-16BE");
+        result = convert_encoding(buffer + 1, size - 1, "UTF-16BE");
+        break;
 
     case 3:
     { // UTF-8
-        result = malloc(size);
+        result = calloc(1, size);
         if (result)
         {
             memcpy(result, buffer + 1, size - 1);
-            result[size - 1] = '\0';
         }
-        return result;
+        break;
+    }
     }
 
-    default:
-        return NULL;
+    if (result)
+    {
+        clean_string(result);
     }
+    return result;
 }
 
-static char *get_comment_content(const char *buffer, int size)
+char *get_comment_content(const char *buffer, int size)
 {
-    if (size <= 4)
-    {
+    if (!buffer || size <= 4)
         return NULL;
-    }
 
     unsigned char encoding = buffer[0];
     const char *description_start = buffer + 4;
     int desc_len = 0;
+    char *comment_text = NULL;
 
+    // Skip language bytes (3 bytes) and find description terminator
     switch (encoding)
     {
     case 0: // ISO-8859-1
     case 3: // UTF-8
-        while (desc_len < size - 4 && description_start[desc_len] != 0)
-        {
+        while (desc_len < size - 4 && description_start[desc_len])
             desc_len++;
-        }
         if (desc_len < size - 4)
         {
-            return strdup(description_start + desc_len + 1);
+            comment_text = convert_encoding(description_start + desc_len + 1,
+                                            size - desc_len - 5,
+                                            encoding == 0 ? "ISO-8859-1" : "UTF-8");
         }
         break;
 
@@ -200,12 +309,14 @@ static char *get_comment_content(const char *buffer, int size)
         }
         if (desc_len < size - 5)
         {
-            return strdup(description_start + desc_len + 2);
+            comment_text = convert_encoding(description_start + desc_len + 2,
+                                            size - desc_len - 6,
+                                            encoding == 1 ? "UTF-16" : "UTF-16BE");
         }
         break;
     }
 
-    return NULL;
+    return comment_text;
 }
 
 TagData *read_id3v2_tags(const char *filename)
@@ -232,6 +343,14 @@ TagData *read_id3v2_tags(const char *filename)
         return NULL;
     }
 
+    unsigned int tag_size = decode_synchsafe(header.size);
+    if (tag_size == 0 || tag_size > 100000000)
+    { // Sanity check for tag size
+        display_error("Invalid tag size");
+        fclose(file);
+        return NULL;
+    }
+
     TagData *tag_data = calloc(1, sizeof(TagData));
     if (!tag_data)
     {
@@ -240,13 +359,13 @@ TagData *read_id3v2_tags(const char *filename)
         return NULL;
     }
 
-    unsigned int tag_size = decode_synchsafe(header.size);
     char frame_id[5] = {0};
     unsigned char size_bytes[4];
     unsigned char flags[2];
     char *buffer = NULL;
+    long file_pos;
 
-    while (ftell(file) < tag_size + 10)
+    while ((file_pos = ftell(file)) >= 0 && file_pos < tag_size + 10)
     {
         if (fread(frame_id, 1, 4, file) != 4)
             break;
@@ -262,13 +381,18 @@ TagData *read_id3v2_tags(const char *filename)
         unsigned int frame_size = decode_synchsafe(size_bytes);
         if (frame_size == 0 || frame_size > MAX_FRAME_SIZE)
         {
-            fseek(file, frame_size, SEEK_CUR);
+            if (fseek(file, frame_size, SEEK_CUR) != 0)
+                break;
             continue;
         }
 
-        buffer = realloc(buffer, frame_size);
-        if (!buffer)
+        char *new_buffer = realloc(buffer, frame_size);
+        if (!new_buffer)
+        {
+            SAFE_FREE(buffer);
             break;
+        }
+        buffer = new_buffer;
 
         if (fread(buffer, 1, frame_size, file) != frame_size)
             break;
@@ -286,25 +410,44 @@ TagData *read_id3v2_tags(const char *filename)
         if (!content)
             continue;
 
-        // Store frame content in tag_data
+        // Store frame content
         if (strncmp(frame_id, "TIT2", 4) == 0)
+        {
+            SAFE_FREE(tag_data->title);
             tag_data->title = content;
+        }
         else if (strncmp(frame_id, "TPE1", 4) == 0)
+        {
+            SAFE_FREE(tag_data->artist);
             tag_data->artist = content;
+        }
         else if (strncmp(frame_id, "TALB", 4) == 0)
+        {
+            SAFE_FREE(tag_data->album);
             tag_data->album = content;
+        }
         else if (strncmp(frame_id, "TYER", 4) == 0)
+        {
+            SAFE_FREE(tag_data->year);
             tag_data->year = content;
+        }
         else if (strncmp(frame_id, "COMM", 4) == 0)
+        {
+            SAFE_FREE(tag_data->comment);
             tag_data->comment = content;
+        }
         else if (strncmp(frame_id, "TCON", 4) == 0)
+        {
+            SAFE_FREE(tag_data->genre);
             tag_data->genre = content;
+        }
         else
-            free(content);
+        {
+            SAFE_FREE(content);
+        }
     }
 
-    free(buffer);
-    fclose(file);
+    SAFE_FREE(buffer);
 
     // Set version string
     char version_str[16];
@@ -312,6 +455,7 @@ TagData *read_id3v2_tags(const char *filename)
              header.version[0], header.version[1]);
     tag_data->version = strdup(version_str);
 
+    fclose(file);
     return tag_data;
 }
 
