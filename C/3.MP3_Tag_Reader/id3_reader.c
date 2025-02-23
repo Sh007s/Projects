@@ -498,6 +498,15 @@ TagData *read_id3v1_tags(const char *filename)
     data->year = strndup(tag + 93, 4);
     data->comment = strndup(tag + 97, 30);
 
+    if (tag[125] == 0)
+    {
+        data->track = tag[126];
+    }
+    else
+    {
+        data->track = -1;
+    }
+
     // Handle genre
     unsigned char genre_code = tag[127];
     if (genre_code < sizeof(genres) / sizeof(genres[0]))
@@ -527,7 +536,7 @@ void display_metadata(const TagData *data)
     printf("Title       : %s\n", data->title ? data->title : "Unknown");
     printf("Album       : %s\n", data->album ? data->album : "Unknown");
     printf("Year        : %s\n", data->year ? data->year : "Unknown");
-    printf("Track       : \n");
+    printf("Track       : %d\n", data->track != -1 ? data->track : 0);
     printf("Genre       : %s\n", data->genre ? data->genre : "Unknown");
     printf("Artist      : %s\n", data->artist ? data->artist : "Unknown");
     printf("Comment     : %s\n\n", data->comment ? data->comment : "Unknown");
@@ -547,7 +556,7 @@ void view_tags(const char *filename)
     }
 
     // Fall back to ID3v1 if ID3v2 fails
-    if (!data)
+      if (!data)
     {
         data = read_id3v1_tags(filename);
         if (data)
