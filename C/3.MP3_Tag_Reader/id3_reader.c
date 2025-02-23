@@ -451,7 +451,7 @@ TagData *read_id3v2_tags(const char *filename)
 
     // Set version string
     char version_str[16];
-    snprintf(version_str, sizeof(version_str), "ID3v2.%d.%d",
+    snprintf(version_str, sizeof(version_str), "2.%d.%d",
              header.version[0], header.version[1]);
     tag_data->version = strdup(version_str);
 
@@ -521,15 +521,18 @@ void display_metadata(const TagData *data)
         return;
     }
 
-    printf("\nMetadata:\n");
-    printf("----------------------------------------\n");
-    printf("Version : %s\n", data->version ? data->version : "Unknown");
-    printf("Title   : %s\n", data->title ? data->title : "Unknown");
-    printf("Artist  : %s\n", data->artist ? data->artist : "Unknown");
-    printf("Album   : %s\n", data->album ? data->album : "Unknown");
-    printf("Year    : %s\n", data->year ? data->year : "Unknown");
-    printf("Comment : %s\n", data->comment ? data->comment : "Unknown");
-    printf("Genre   : %s\n", data->genre ? data->genre : "Unknown");
+    printf("\n   MP3 Tag Reader & Editor:\n");
+    printf("\n----------------------------------------\n");
+    printf("\nVersion  ID : %s\n", data->version ? data->version : "Unknown");
+    printf("Title       : %s\n", data->title ? data->title : "Unknown");
+    printf("Album       : %s\n", data->album ? data->album : "Unknown");
+    printf("Year        : %s\n", data->year ? data->year : "Unknown");
+    printf("Track       : \n");
+    printf("Genre       : %s\n", data->genre ? data->genre : "Unknown");
+    printf("Artist      : %s\n", data->artist ? data->artist : "Unknown");
+    printf("Comment     : %s\n\n", data->comment ? data->comment : "Unknown");
+
+    printf("Extracting Album Art - Done\n");
     printf("----------------------------------------\n");
 }
 

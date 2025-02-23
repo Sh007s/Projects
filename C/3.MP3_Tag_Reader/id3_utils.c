@@ -9,6 +9,7 @@ TagData *create_tag_data()
   {
     data->version = NULL;
     data->title = NULL;
+    data->track = NULL;
     data->artist = NULL;
     data->album = NULL;
     data->year = NULL;
@@ -25,6 +26,7 @@ void free_tag_data(TagData *data)
   {
     free(data->version);
     free(data->title);
+    free(data->track);
     free(data->artist);
     free(data->album);
     free(data->year);
