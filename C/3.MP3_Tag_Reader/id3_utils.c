@@ -16,6 +16,7 @@ TagData *create_tag_data()
     data->genre = NULL;
 
     data->track = 0; // Initialize other fields as needed
+    data ->total_track = 0;
   }
   return data;
 }

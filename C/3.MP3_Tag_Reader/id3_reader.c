@@ -364,6 +364,7 @@ TagData *read_id3v2_tags(const char *filename)
     unsigned char flags[2];
     char *buffer = NULL;
     long file_pos;
+    tag_data->track = -1;
 
     while ((file_pos = ftell(file)) >= 0 && file_pos < tag_size + 10)
     {
@@ -372,8 +373,7 @@ TagData *read_id3v2_tags(const char *filename)
         if (frame_id[0] == 0)
             break;
 
-        if (fread(size_bytes, 1, 4, file) != 4 ||
-            fread(flags, 1, 2, file) != 2)
+        if (fread(size_bytes, 1, 4, file) != 4 || fread(flags, 1, 2, file) != 2)
         {
             break;
         }
@@ -411,6 +411,17 @@ TagData *read_id3v2_tags(const char *filename)
             continue;
 
         // Store frame content
+
+        if (strncmp(frame_id, "TRCK", 4) == 0)
+        {
+            int track_num = atoi(content);
+            // Store values safely
+            tag_data->track = (track_num > 0) ? track_num : -1;
+            //   tag_data->total_track = (total_tracks > 0) ? total_tracks : -1;
+
+            SAFE_FREE(content);
+        }
+
         if (strncmp(frame_id, "TIT2", 4) == 0)
         {
             SAFE_FREE(tag_data->title);
@@ -536,7 +547,12 @@ void display_metadata(const TagData *data)
     printf("Title       : %s\n", data->title ? data->title : "Unknown");
     printf("Album       : %s\n", data->album ? data->album : "Unknown");
     printf("Year        : %s\n", data->year ? data->year : "Unknown");
-    printf("Track       : %d\n", data->track != -1 ? data->track : 0);
+    // printf("Track       : %d/%d\n", (data->track,data-> total_track) != -1 ? (data->track , data ->total_track) : (0,0));
+    if (data->track != -1 && data->total_track != -1)
+    {
+        //    printf("Track       : %d/%d\n", data->track, data->total_track);
+        printf("Track       : %d\n", data->track);
+    }
     printf("Genre       : %s\n", data->genre ? data->genre : "Unknown");
     printf("Artist      : %s\n", data->artist ? data->artist : "Unknown");
     printf("Comment     : %s\n\n", data->comment ? data->comment : "Unknown");
@@ -556,7 +572,7 @@ void view_tags(const char *filename)
     }
 
     // Fall back to ID3v1 if ID3v2 fails
-      if (!data)
+    if (!data)
     {
         data = read_id3v1_tags(filename);
         if (data)
