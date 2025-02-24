@@ -321,6 +321,7 @@ char *get_comment_content(const char *buffer, int size)
 
 TagData *read_id3v2_tags(const char *filename)
 {
+    printf("%s\n", filename);
     FILE *file = fopen(filename, "rb");
     if (!file)
     {
@@ -547,12 +548,7 @@ void display_metadata(const TagData *data)
     printf("Title       : %s\n", data->title ? data->title : "Unknown");
     printf("Album       : %s\n", data->album ? data->album : "Unknown");
     printf("Year        : %s\n", data->year ? data->year : "Unknown");
-    // printf("Track       : %d/%d\n", (data->track,data-> total_track) != -1 ? (data->track , data ->total_track) : (0,0));
-    if (data->track != -1 && data->total_track != -1)
-    {
-        //    printf("Track       : %d/%d\n", data->track, data->total_track);
-        printf("Track       : %d\n", data->track);
-    }
+    printf("Track       : %d\n", data->track);
     printf("Genre       : %s\n", data->genre ? data->genre : "Unknown");
     printf("Artist      : %s\n", data->artist ? data->artist : "Unknown");
     printf("Comment     : %s\n\n", data->comment ? data->comment : "Unknown");

@@ -50,7 +50,22 @@ int main(int argc, char *argv[])
     }
     else if (strcmp(argv[1], "-v") == 0 && argc == 3)
     {
-        view_tags(argv[2]);
+        if (strstr(argv[2], ".mp3") == 0)
+        {
+            printf("Error: argv[3] is not passed properly.\n");
+            printf("Usage: ./a.out -v filename.mp3 \n");
+            return e_success;
+        }
+        char *ext = strrchr(argv[2], '.');
+
+        if (ext != NULL && strcmp(ext, ".mp3") == 0)
+        {
+            view_tags(argv[2]);
+        }
+        else
+        {
+            printf("Failed\n");
+        }
     }
     else if (strcmp(argv[1], "-e") == 0 && argc == 5)
     {
