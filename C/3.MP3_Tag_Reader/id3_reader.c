@@ -344,6 +344,14 @@ TagData *read_id3v2_tags(const char *filename)
         return NULL;
     }
 
+    int id3_version = header.version[0];
+    if (id3_version == 4)
+    {
+        display_error("ID3v2.4 is not Supported");
+        fclose(file);
+        return NULL;
+    }
+
     unsigned int tag_size = decode_synchsafe(header.size);
     if (tag_size == 0 || tag_size > 100000000)
     { // Sanity check for tag size
@@ -369,12 +377,15 @@ TagData *read_id3v2_tags(const char *filename)
 
     while ((file_pos = ftell(file)) >= 0 && file_pos < tag_size + 10)
     {
-        if (fread(frame_id, 1, 4, file) != 4)
+        int frame_id_size = (id3_version == 2) ? 3 : 4;
+        if (fread(frame_id, 1, frame_id_size, file) != frame_id_size)
             break;
+        frame_id[frame_id_size] = '\0';
         if (frame_id[0] == 0)
             break;
 
-        if (fread(size_bytes, 1, 4, file) != 4 || fread(flags, 1, 2, file) != 2)
+        int frame_size_bytes = (id3_version == 2) ? 3 : 4;
+        if (fread(size_bytes, 1, frame_size_bytes, file) != frame_size_bytes || fread(flags, 1, 2, file) != 2)
         {
             break;
         }
@@ -415,30 +426,32 @@ TagData *read_id3v2_tags(const char *filename)
 
         if (strncmp(frame_id, "TRCK", 4) == 0)
         {
-            int track_num = atoi(content);
-            // Store values safely
+            // int track_num = atoi(content);
+            // // Store values safely
+            // tag_data->track = (track_num > 0) ? track_num : -1;
+            // //   tag_data->total_track = (total_tracks > 0) ? total_tracks : -1;
+            int track_num = 0, total_track = 0;
+            sscanf(content, "%d/%d", &track_num, &total_track);
             tag_data->track = (track_num > 0) ? track_num : -1;
-            //   tag_data->total_track = (total_tracks > 0) ? total_tracks : -1;
-
             SAFE_FREE(content);
         }
 
-        if (strncmp(frame_id, "TIT2", 4) == 0)
+        else if (strncmp(frame_id, "TIT2", 4) == 0 || strncmp(frame_id, "TT2", 3) == 0)
         {
             SAFE_FREE(tag_data->title);
             tag_data->title = content;
         }
-        else if (strncmp(frame_id, "TPE1", 4) == 0)
+        else if (strncmp(frame_id, "TPE1", 4) == 0 || strncmp(frame_id, "TP1", 3) == 0)
         {
             SAFE_FREE(tag_data->artist);
             tag_data->artist = content;
         }
-        else if (strncmp(frame_id, "TALB", 4) == 0)
+        else if (strncmp(frame_id, "TALB", 4) == 0 || strncmp(frame_id, "TAL", 3) == 0)
         {
             SAFE_FREE(tag_data->album);
             tag_data->album = content;
         }
-        else if (strncmp(frame_id, "TYER", 4) == 0)
+        else if (strncmp(frame_id, "TYER", 4) == 0 || strncmp(frame_id, "TDRC", 4) == 0 || strncmp(frame_id, "TYE", 3) == 0)
         {
             SAFE_FREE(tag_data->year);
             tag_data->year = content;
@@ -448,7 +461,7 @@ TagData *read_id3v2_tags(const char *filename)
             SAFE_FREE(tag_data->comment);
             tag_data->comment = content;
         }
-        else if (strncmp(frame_id, "TCON", 4) == 0)
+        else if (strncmp(frame_id, "TCON", 4) == 0 || strncmp(frame_id, "TCO", 3) == 0)
         {
             SAFE_FREE(tag_data->genre);
             tag_data->genre = content;
@@ -463,8 +476,7 @@ TagData *read_id3v2_tags(const char *filename)
 
     // Set version string
     char version_str[16];
-    snprintf(version_str, sizeof(version_str), "2.%d.%d",
-             header.version[0], header.version[1]);
+    snprintf(version_str, sizeof(version_str), "2.%d.%d", header.version[0], header.version[1]);
     tag_data->version = strdup(version_str);
 
     fclose(file);
@@ -508,15 +520,17 @@ TagData *read_id3v1_tags(const char *filename)
     data->artist = strndup(tag + 33, 30);
     data->album = strndup(tag + 63, 30);
     data->year = strndup(tag + 93, 4);
-    data->comment = strndup(tag + 97, 30);
 
     if (tag[125] == 0)
     {
-        data->track = tag[126];
+        data->comment = strndup(tag + 97, 28); // Only 28 bytes for comment in ID3v1.1
+        data->track = (unsigned char)tag[126]; // Track number
+        data->version = strdup("ID3v1.1");
     }
     else
     {
-        data->track = -1;
+        data->comment = strndup(tag + 97, 28); // Full 30 bytes for comment in ID3v1
+        data->track = -1;                      // No track number
     }
 
     // Handle genre
@@ -570,6 +584,7 @@ void view_tags(const char *filename)
     // Fall back to ID3v1 if ID3v2 fails
     if (!data)
     {
+        //    TagData *data  = read_id3v1_tags(filename);
         data = read_id3v1_tags(filename);
         if (data)
         {
