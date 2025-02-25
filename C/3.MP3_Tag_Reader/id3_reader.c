@@ -373,7 +373,8 @@ TagData *read_id3v2_tags(const char *filename)
     unsigned char flags[2];
     char *buffer = NULL;
     long file_pos;
-    tag_data->track = -1;
+    tag_data->track = 0;
+    tag_data -> total_track = 0;
 
     while ((file_pos = ftell(file)) >= 0 && file_pos < tag_size + 10)
     {
@@ -426,13 +427,24 @@ TagData *read_id3v2_tags(const char *filename)
 
         if (strncmp(frame_id, "TRCK", 4) == 0)
         {
-            // int track_num = atoi(content);
-            // // Store values safely
-            // tag_data->track = (track_num > 0) ? track_num : -1;
-            // //   tag_data->total_track = (total_tracks > 0) ? total_tracks : -1;
             int track_num = 0, total_track = 0;
-            sscanf(content, "%d/%d", &track_num, &total_track);
-            tag_data->track = (track_num > 0) ? track_num : -1;
+            if (sscanf(content, "%d/%d", &track_num, &total_track) >= 1)
+            {
+                tag_data->track  = track_num;
+            }
+            else if (sscanf(content, "%d", &track_num) == 1 )
+            {
+                tag_data->track  = track_num;
+            }
+            else
+            {
+                tag_data -> track = 0;
+            }
+            if( total_track > 0)
+            {
+                tag_data -> total_track = total_track;
+            }
+         //   tag_data->track = (track_num > 0) ? track_num : -1;
             SAFE_FREE(content);
         }
 
