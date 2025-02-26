@@ -60,13 +60,14 @@ int main(int argc, char *argv[])
 
         if (ext != NULL && strcmp(ext, ".mp3") == 0)
         {
-            view_tags(argv[2]);
+             view_tags(argv[2]);
         }
         else
         {
             printf("Failed\n");
         }
     }
+
     else if (strcmp(argv[1], "-e") == 0 && argc == 5)
     {
         char *tag = argv[2];

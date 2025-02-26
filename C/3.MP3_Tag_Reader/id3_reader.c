@@ -11,12 +11,7 @@
 #include <string.h>
 
 // Supported Korean character encodings
-const char *korean_encodings[] = {
-    "EUC-KR",
-    "CP949",
-    "UHC",
-    "JOHAB",
-    NULL};
+const char *korean_encodings[] = {"EUC-KR", "CP949", "UHC", "JOHAB", NULL};
 
 // ID3v1 Genre list
 const char *genres[] = {
@@ -71,15 +66,7 @@ void clean_string(char *str)
         return;
 
     // Remove website references and clean hyphens
-    static const char *patterns[] = {
-        "MassTamilan.dev",
-        "PenduJatt.Com",
-        "PenduJatt.net",
-        "SenSongsMp3.Com",
-        "::",
-        " -", // Space before hyphen
-        "- ", // Space after hyphen
-        NULL};
+    static const char *patterns[] = {"MassTamilan.dev", "PenduJatt.Com", "PenduJatt.net", "SenSongsMp3.Com", "::", " -", NULL};
 
     // First pass: Remove website patterns
     for (int i = 0; patterns[i]; i++)
@@ -394,9 +381,7 @@ char *get_comment_content(const char *buffer, int size)
             desc_len++;
         if (desc_len < size - 4)
         {
-            comment_text = convert_encoding(description_start + desc_len + 1,
-                                            size - desc_len - 5,
-                                            encoding == 0 ? "ISO-8859-1" : "UTF-8");
+            comment_text = convert_encoding(description_start + desc_len + 1, size - desc_len - 5, encoding == 0 ? "ISO-8859-1" : "UTF-8");
         }
         break;
 
@@ -409,9 +394,7 @@ char *get_comment_content(const char *buffer, int size)
         }
         if (desc_len < size - 5)
         {
-            comment_text = convert_encoding(description_start + desc_len + 2,
-                                            size - desc_len - 6,
-                                            encoding == 1 ? "UTF-16" : "UTF-16BE");
+            comment_text = convert_encoding(description_start + desc_len + 2, size - desc_len - 6, encoding == 1 ? "UTF-16" : "UTF-16BE");
         }
         break;
     }
@@ -711,7 +694,7 @@ void display_metadata(const TagData *data)
     }
 
     printf("\n   MP3 Tag Reader & Editor:\n");
-    printf("\n----------------------------------------\n");
+    printf("\n----------------cle------------------------\n");
     printf("\nVersion  ID : %s\n", data->version ? data->version : "Unknown");
     printf("Title       : %s\n", data->title ? data->title : "Unknown");
     printf("Album       : %s\n", data->album ? data->album : "Unknown");
@@ -725,9 +708,6 @@ void display_metadata(const TagData *data)
     printf("----------------------------------------\n");
 }
 
-/**
- * @brief Reads and displays ID3 tags from a file
- */
 void view_tags(const char *filename)
 {
     // Try ID3v2 first
