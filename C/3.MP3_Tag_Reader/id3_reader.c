@@ -6,6 +6,8 @@
 #include "id3_reader.h"
 #include "error_handling.h"
 #include "main.h"
+#include <stdbool.h>
+#include <stdbool.h>
 
 // Supported Korean character encodings
 const char *korean_encodings[] = {
@@ -319,9 +321,16 @@ char *get_comment_content(const char *buffer, int size)
     return comment_text;
 }
 
+void extract_track_number(unsigned char *data, int size)
+{
+    char track_str[10] = {0};
+    memcpy(track_str, data + 1, size - 1); // Skip encoding byte
+    printf("Track Number Extracted: %s\n", track_str);
+}
+
 TagData *read_id3v2_tags(const char *filename)
 {
-    printf("%s\n", filename);
+ //   printf("%s\n", filename);
     FILE *file = fopen(filename, "rb");
     if (!file)
     {
@@ -373,15 +382,23 @@ TagData *read_id3v2_tags(const char *filename)
     unsigned char flags[2];
     char *buffer = NULL;
     long file_pos;
-    tag_data->track = 0;
-    tag_data -> total_track = 0;
 
+    // Initialize track values to 0
+    tag_data->track = 0;
+    tag_data->total_track = 0;
+
+    // Flag to track if we found TRCK frame in the entire file
+    bool found_trck = false;
+
+  //  printf("Scanning ID3 frames:\n");
     while ((file_pos = ftell(file)) >= 0 && file_pos < tag_size + 10)
     {
         int frame_id_size = (id3_version == 2) ? 3 : 4;
         if (fread(frame_id, 1, frame_id_size, file) != frame_id_size)
             break;
         frame_id[frame_id_size] = '\0';
+
+        // Break if we reach a null frame ID (end of frames)
         if (frame_id[0] == 0)
             break;
 
@@ -391,13 +408,25 @@ TagData *read_id3v2_tags(const char *filename)
             break;
         }
 
-        unsigned int frame_size = decode_synchsafe(size_bytes);
+        // For ID3v2.3, frame sizes are stored in big-endian bytes, not synchsafe
+        unsigned int frame_size;
+        if (id3_version == 3)
+        {
+            frame_size = (size_bytes[0] << 24) | (size_bytes[1] << 16) | (size_bytes[2] << 8) | size_bytes[3];
+        }
+        else
+        {
+            frame_size = decode_synchsafe(size_bytes);
+        }
+
         if (frame_size == 0 || frame_size > MAX_FRAME_SIZE)
         {
             if (fseek(file, frame_size, SEEK_CUR) != 0)
                 break;
             continue;
         }
+
+     //   printf("Found frame ID: %s (size: %u bytes)\n", frame_id, frame_size);
 
         char *new_buffer = realloc(buffer, frame_size);
         if (!new_buffer)
@@ -423,32 +452,78 @@ TagData *read_id3v2_tags(const char *filename)
         if (!content)
             continue;
 
-        // Store frame content
-
+        // Handle TRCK frame - Check if this is a track number frame
         if (strncmp(frame_id, "TRCK", 4) == 0)
         {
+            found_trck = true; // Mark TRCK as found for the entire file
+         //   printf("DEBUG: Found TRCK Frame\n");
+
+            // if (content)
+            //     printf("DEBUG: Raw TRCK Content = [%s] (Length: %lu)\n", content, strlen(content));
+            // else
+            //     printf("DEBUG: TRCK Content is NULL\n");
+
             int track_num = 0, total_track = 0;
-            if (sscanf(content, "%d/%d", &track_num, &total_track) >= 1)
+
+            if (content && strlen(content) > 0)
             {
-                tag_data->track  = track_num;
-            }
-            else if (sscanf(content, "%d", &track_num) == 1 )
-            {
-                tag_data->track  = track_num;
+                // Skip the text encoding byte if present
+                char *track_text = content;
+                if (frame_size > 1)
+                { // Check if we have more than just the encoding byte
+                    // If first byte is 0-3, it's likely the text encoding indicator
+                    unsigned char encoding = (unsigned char)content[0];
+                    if (encoding <= 3)
+                    {
+                        track_text++; // Skip the encoding byte
+                    }
+                }
+
+                // Prepare a clean buffer for the track text
+                char cleaned_content[20] = {0};
+                strncpy(cleaned_content, track_text, sizeof(cleaned_content) - 1);
+
+                // Remove unexpected non-printable characters (if any)
+                for (size_t i = 0; i < strlen(cleaned_content); i++)
+                {
+                    if (!isprint(cleaned_content[i]))
+                    {
+             //           printf("DEBUG: Non-printable char found in TRCK at index %zu\n", i);
+                        cleaned_content[i] = '\0'; // Terminate at first non-printable char
+                        break;
+                    }
+                }
+
+              //  printf("DEBUG: Cleaned TRCK Content = [%s] (Length: %lu)\n", cleaned_content, strlen(cleaned_content));
+
+                // Try to parse as "track/total"
+                if (sscanf(cleaned_content, "%d/%d", &track_num, &total_track) >= 1)
+                {
+                    tag_data->track = track_num;
+                    tag_data->total_track = (total_track > 0) ? total_track : 0;
+                 //   printf("DEBUG: Extracted Track = %d, Total Tracks = %d\n", track_num, total_track);
+                }
+                // Try to parse as a simple number
+                else if (sscanf(cleaned_content, "%d", &track_num) == 1)
+                {
+                    tag_data->track = track_num;
+                 //   printf("DEBUG: Extracted Track = %d\n", track_num);
+                }
+                else
+                {
+                    tag_data->track = 0;
+                //    printf("DEBUG: TRCK Parsing Failed\n");
+                }
             }
             else
             {
-                tag_data -> track = 0;
+                tag_data->track = 0;
+              //  printf("DEBUG: TRCK Content is NULL or Empty\n");
             }
-            if( total_track > 0)
-            {
-                tag_data -> total_track = total_track;
-            }
-         //   tag_data->track = (track_num > 0) ? track_num : -1;
-            SAFE_FREE(content);
         }
 
-        else if (strncmp(frame_id, "TIT2", 4) == 0 || strncmp(frame_id, "TT2", 3) == 0)
+        // Handle other frame types
+        if (strncmp(frame_id, "TIT2", 4) == 0 || strncmp(frame_id, "TT2", 3) == 0)
         {
             SAFE_FREE(tag_data->title);
             tag_data->title = content;
@@ -478,10 +553,16 @@ TagData *read_id3v2_tags(const char *filename)
             SAFE_FREE(tag_data->genre);
             tag_data->genre = content;
         }
-        else
+        else if (strncmp(frame_id, "TRCK", 4) != 0) // Free only if not already handled by TRCK code
         {
             SAFE_FREE(content);
         }
+    }
+
+    // After scanning all frames, report if TRCK was not found
+    if (!found_trck)
+    {
+        printf("DEBUG: TRCK frame was not found in the file\n");
     }
 
     SAFE_FREE(buffer);
@@ -494,7 +575,6 @@ TagData *read_id3v2_tags(const char *filename)
     fclose(file);
     return tag_data;
 }
-
 TagData *read_id3v1_tags(const char *filename)
 {
     FILE *fp = fopen(filename, "rb");
@@ -585,7 +665,7 @@ void display_metadata(const TagData *data)
 
 void view_tags(const char *filename)
 {
-    // Try ID3v2 first
+    //     // Try ID3v2 first
     TagData *data = read_id3v2_tags(filename);
     if (data)
     {
