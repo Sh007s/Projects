@@ -34,7 +34,7 @@ void display_metadata(const TagData *data);
 void view_tags(const char *filename);
 
 unsigned int decode_synchsafe(const unsigned char bytes[4]);
-int is_korean_text(const unsigned char *buf, size_t len);
+unsigned int is_korean_text(const unsigned char *buf, size_t len);
 char *try_korean_encodings(const char *input, size_t input_len);
 char *get_frame_content(const char *buffer, int size);
 char *get_comment_content(const char *buffer, int size);

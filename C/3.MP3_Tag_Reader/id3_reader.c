@@ -7,7 +7,8 @@
 #include "error_handling.h"
 #include "main.h"
 #include <stdbool.h>
-#include <stdbool.h>
+#include <ctype.h>
+#include <string.h>
 
 // Supported Korean character encodings
 const char *korean_encodings[] = {
@@ -31,59 +32,53 @@ const char *genres[] = {
     "New Wave", "Psychadelic", "Rave", "Showtunes", "Trailer", "Lo-Fi", "Tribal",
     "Acid Punk", "Acid Jazz", "Polka", "Retro", "Musical", "Rock & Roll", "Hard Rock"};
 
-// New helper functions for string cleanup
-static void decode_html_entities(char *str)
+/**
+ * @brief Converts a synchsafe integer used in ID3 frames to a regular integer
+ */
+ unsigned int decode_synchsafe(const unsigned char bytes[4])
 {
-    if (!str)
-        return;
-
-    char *write = str;
-    char *read = str;
-
-    while (*read)
-    {
-        if (strncmp(read, "&quot;", 6) == 0)
-        {
-            *write++ = '"';
-            read += 6;
-        }
-        else if (strncmp(read, "&amp;", 5) == 0)
-        {
-            *write++ = '&';
-            read += 5;
-        }
-        else if (strncmp(read, "&lt;", 4) == 0)
-        {
-            *write++ = '<';
-            read += 4;
-        }
-        else if (strncmp(read, "&gt;", 4) == 0)
-        {
-            *write++ = '>';
-            read += 4;
-        }
-        else
-        {
-            *write++ = *read++;
-        }
-    }
-    *write = '\0';
+    return ((bytes[0] & 0x7f) << 21) |
+           ((bytes[1] & 0x7f) << 14) |
+           ((bytes[2] & 0x7f) << 7) |
+           (bytes[3] & 0x7f);
 }
 
-static void clean_string(char *str)
+/**
+ * @brief Detects if text contains Korean encoding
+ */
+unsigned int is_korean_text(const unsigned char *buf, size_t len)
+{
+    if (!buf || len < 2)
+        return 0;
+
+    for (size_t i = 0; i < len - 1; i++)
+    {
+        if ((buf[i] == 0xEA || buf[i] == 0xEB) &&
+            (buf[i + 1] >= 0x80 && buf[i + 1] <= 0xBF))
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/**
+ * @brief Cleans up a string by removing common artifacts
+ */
+void clean_string(char *str)
 {
     if (!str)
         return;
 
     // Remove website references and clean hyphens
-    const char *patterns[] = {
+    static const char *patterns[] = {
         "MassTamilan.dev",
         "PenduJatt.Com",
         "PenduJatt.net",
         "SenSongsMp3.Com",
         "::",
-        " -", // Add space before hyphen to avoid removing hyphens in legitimate names
-        "- ", // Add space after hyphen
+        " -", // Space before hyphen
+        "- ", // Space after hyphen
         NULL};
 
     // First pass: Remove website patterns
@@ -138,30 +133,10 @@ static void clean_string(char *str)
         memmove(str, start, strlen(start) + 1);
     }
 }
-unsigned int decode_synchsafe(const unsigned char bytes[4])
-{
-    return ((bytes[0] & 0x7f) << 21) |
-           ((bytes[1] & 0x7f) << 14) |
-           ((bytes[2] & 0x7f) << 7) |
-           (bytes[3] & 0x7f);
-}
 
-int is_korean_text(const unsigned char *buf, size_t len)
-{
-    if (!buf || len < 2)
-        return 0;
-
-    for (size_t i = 0; i < len - 1; i++)
-    {
-        if ((buf[i] == 0xEA || buf[i] == 0xEB) &&
-            (buf[i + 1] >= 0x80 && buf[i + 1] <= 0xBF))
-        {
-            return 1;
-        }
-    }
-    return 0;
-}
-
+/**
+ * @brief Converts text from one encoding to another
+ */
 char *convert_encoding(const char *input, size_t input_len, const char *from_charset)
 {
     if (!input || input_len == 0 || !from_charset)
@@ -172,7 +147,7 @@ char *convert_encoding(const char *input, size_t input_len, const char *from_cha
         return NULL;
 
     size_t out_len = input_len * 4;
-    char *output = calloc(1, out_len + 1); // Use calloc to ensure null termination
+    char *output = calloc(1, out_len + 1);
     if (!output)
     {
         iconv_close(cd);
@@ -196,6 +171,10 @@ char *convert_encoding(const char *input, size_t input_len, const char *from_cha
     return output;
 }
 
+/**
+ * @brief Tries multiple Korean encodings
+ */
+
 char *try_korean_encodings(const char *input, size_t input_len)
 {
     if (!input || input_len == 0)
@@ -210,6 +189,155 @@ char *try_korean_encodings(const char *input, size_t input_len)
     }
     return NULL;
 }
+
+/**
+ * @brief Normalizes genre text for consistent display
+ */
+char *normalize_genre(const char *raw_genre)
+{
+    if (!raw_genre || strlen(raw_genre) == 0)
+    {
+        return strdup("Unknown");
+    }
+
+    char *result = NULL;
+    char *temp = strdup(raw_genre);
+    if (!temp)
+    {
+        return strdup("Unknown");
+    }
+
+    // Convert to lowercase for easier comparison
+    for (char *p = temp; *p; p++)
+    {
+        *p = tolower(*p);
+    }
+
+    // Handle numeric genre codes (ID3v1 standard)
+    if (temp[0] == '(' && isdigit(temp[1]))
+    {
+        int genre_num = atoi(temp + 1);
+        const int num_genres = sizeof(genres) / sizeof(genres[0]);
+
+        if (genre_num >= 0 && genre_num < num_genres)
+        {
+            result = strdup(genres[genre_num]);
+        }
+        else if (genre_num == 255)
+        {
+            // Handle custom genre code
+            char *paren_end = strchr(temp, ')');
+            if (paren_end && strlen(paren_end) > 1)
+            {
+                result = strdup(paren_end + 1);
+            }
+            else
+            {
+                result = strdup("Custom");
+            }
+        }
+        else
+        {
+            result = strdup("Unknown");
+        }
+
+        free(temp);
+        return result;
+    }
+
+    // Handle specific known artist names in genre field
+    if (strcmp(temp, "thaman s") == 0)
+    {
+        free(temp);
+        return strdup("Telugu");
+    }
+
+    // Remove website domains and common non-genre text
+    if (strstr(temp, ".com") || strstr(temp, ".org") || strstr(temp, ".net") ||
+        strstr(temp, "www.") || strstr(temp, "http"))
+    {
+
+        // Extract language information if present
+        const char *languages[] = {"tamil", "telugu", "hindi", "malayalam", "kannada"};
+        const char *results[] = {"Tamil Song", "Telugu", "Hindi", "Malayalam", "Kannada"};
+        const int langs_count = sizeof(languages) / sizeof(languages[0]);
+
+        for (int i = 0; i < langs_count; i++)
+        {
+            if (strstr(temp, languages[i]))
+            {
+                free(temp);
+                return strdup(results[i]);
+            }
+        }
+
+        free(temp);
+        return strdup("Unknown");
+    }
+
+    // Check for Indian language music genres
+    const char *indian_languages[] = {"tamil", "telugu", "hindi", "malayalam", "kannada", "marathi", "punjabi", "bengali"};
+    const int num_languages = sizeof(indian_languages) / sizeof(indian_languages[0]);
+
+    for (int i = 0; i < num_languages; i++)
+    {
+        if (strstr(temp, indian_languages[i]))
+        {
+            // Capitalize first letter for proper format
+            char *capitalized = strdup(indian_languages[i]);
+            capitalized[0] = toupper(capitalized[0]);
+
+            // Check if "song" is in the genre
+            if (strstr(temp, "song"))
+            {
+                char *combined = malloc(strlen(capitalized) + 6); // +6 for " Song" and null terminator
+                if (combined)
+                {
+                    sprintf(combined, "%s Song", capitalized);
+                    free(capitalized);
+                    free(temp);
+                    return combined;
+                }
+            }
+
+            free(temp);
+            return capitalized;
+        }
+    }
+
+    // Handle common film music abbreviations
+    if (strcmp(temp, "ost") == 0 || strstr(temp, "soundtrack") || strstr(temp, "original sound"))
+    {
+        free(temp);
+        return strdup("OST");
+    }
+
+    // If none of the above conditions match, clean up the string and return it
+    // Trim whitespace
+    char *start = temp;
+    char *end = temp + strlen(temp) - 1;
+
+    while (isspace(*start))
+        start++;
+    while (end > start && isspace(*end))
+        *end-- = '\0';
+
+    if (strlen(start) == 0)
+    {
+        free(temp);
+        return strdup("Unknown");
+    }
+
+    // Capitalize first letter
+    start[0] = toupper(start[0]);
+    result = strdup(start);
+    free(temp);
+    return result;
+}
+
+/**
+ * @brief Extracts content from ID3v2 frame
+ */
 
 char *get_frame_content(const char *buffer, int size)
 {
@@ -232,7 +360,6 @@ char *get_frame_content(const char *buffer, int size)
         result = convert_encoding(buffer + 1, size - 1, "ISO-8859-1");
         break;
     }
-
     case 1:
     { // UTF-16 with BOM
         const char *encoding_name = "UTF-16";
@@ -254,11 +381,9 @@ char *get_frame_content(const char *buffer, int size)
         result = convert_encoding(buffer + bom_offset, size - bom_offset, encoding_name);
         break;
     }
-
     case 2: // UTF-16BE without BOM
         result = convert_encoding(buffer + 1, size - 1, "UTF-16BE");
         break;
-
     case 3:
     { // UTF-8
         result = calloc(1, size);
@@ -277,6 +402,9 @@ char *get_frame_content(const char *buffer, int size)
     return result;
 }
 
+/**
+ * @brief Extracts content from ID3v2 comment frame
+ */
 char *get_comment_content(const char *buffer, int size)
 {
     if (!buffer || size <= 4)
@@ -321,16 +449,11 @@ char *get_comment_content(const char *buffer, int size)
     return comment_text;
 }
 
-void extract_track_number(unsigned char *data, int size)
-{
-    char track_str[10] = {0};
-    memcpy(track_str, data + 1, size - 1); // Skip encoding byte
-    printf("Track Number Extracted: %s\n", track_str);
-}
-
+/**
+ * @brief Reads ID3v2 tags from an MP3 file
+ */
 TagData *read_id3v2_tags(const char *filename)
 {
- //   printf("%s\n", filename);
     FILE *file = fopen(filename, "rb");
     if (!file)
     {
@@ -348,15 +471,14 @@ TagData *read_id3v2_tags(const char *filename)
 
     if (strncmp(header.identifier, "ID3", 3) != 0)
     {
-        display_error("Not a valid ID3 tag");
         fclose(file);
-        return NULL;
+        return NULL; // Not an error, just no ID3v2 tag
     }
 
     int id3_version = header.version[0];
     if (id3_version == 4)
     {
-        display_error("ID3v2.4 is not Supported");
+        display_error("ID3v2.4 is not supported");
         fclose(file);
         return NULL;
     }
@@ -383,14 +505,10 @@ TagData *read_id3v2_tags(const char *filename)
     char *buffer = NULL;
     long file_pos;
 
-    // Initialize track values to 0
+    // Initialize track values
     tag_data->track = 0;
     tag_data->total_track = 0;
 
-    // Flag to track if we found TRCK frame in the entire file
-    bool found_trck = false;
-
-  //  printf("Scanning ID3 frames:\n");
     while ((file_pos = ftell(file)) >= 0 && file_pos < tag_size + 10)
     {
         int frame_id_size = (id3_version == 2) ? 3 : 4;
@@ -398,21 +516,24 @@ TagData *read_id3v2_tags(const char *filename)
             break;
         frame_id[frame_id_size] = '\0';
 
-        // Break if we reach a null frame ID (end of frames)
+        // Break if we reach a null frame ID
         if (frame_id[0] == 0)
             break;
 
         int frame_size_bytes = (id3_version == 2) ? 3 : 4;
-        if (fread(size_bytes, 1, frame_size_bytes, file) != frame_size_bytes || fread(flags, 1, 2, file) != 2)
-        {
+        if (fread(size_bytes, 1, frame_size_bytes, file) != frame_size_bytes)
             break;
-        }
 
-        // For ID3v2.3, frame sizes are stored in big-endian bytes, not synchsafe
+        // Read flags
+        if (fread(flags, 1, 2, file) != 2)
+            break;
+
+        // Calculate frame size
         unsigned int frame_size;
         if (id3_version == 3)
         {
-            frame_size = (size_bytes[0] << 24) | (size_bytes[1] << 16) | (size_bytes[2] << 8) | size_bytes[3];
+            frame_size = (size_bytes[0] << 24) | (size_bytes[1] << 16) |
+                         (size_bytes[2] << 8) | size_bytes[3];
         }
         else
         {
@@ -426,8 +547,7 @@ TagData *read_id3v2_tags(const char *filename)
             continue;
         }
 
-     //   printf("Found frame ID: %s (size: %u bytes)\n", frame_id, frame_size);
-
+        // Allocate buffer for frame content
         char *new_buffer = realloc(buffer, frame_size);
         if (!new_buffer)
         {
@@ -452,78 +572,41 @@ TagData *read_id3v2_tags(const char *filename)
         if (!content)
             continue;
 
-        // Handle TRCK frame - Check if this is a track number frame
+        // Handle different frame types
         if (strncmp(frame_id, "TRCK", 4) == 0)
         {
-            found_trck = true; // Mark TRCK as found for the entire file
-         //   printf("DEBUG: Found TRCK Frame\n");
-
-            // if (content)
-            //     printf("DEBUG: Raw TRCK Content = [%s] (Length: %lu)\n", content, strlen(content));
-            // else
-            //     printf("DEBUG: TRCK Content is NULL\n");
-
             int track_num = 0, total_track = 0;
 
-            if (content && strlen(content) > 0)
+            // Skip encoding byte if needed
+            char *track_text = content;
+
+            // Clean non-printable characters
+            char cleaned_content[20] = {0};
+            strncpy(cleaned_content, track_text, sizeof(cleaned_content) - 1);
+
+            for (size_t i = 0; i < strlen(cleaned_content); i++)
             {
-                // Skip the text encoding byte if present
-                char *track_text = content;
-                if (frame_size > 1)
-                { // Check if we have more than just the encoding byte
-                    // If first byte is 0-3, it's likely the text encoding indicator
-                    unsigned char encoding = (unsigned char)content[0];
-                    if (encoding <= 3)
-                    {
-                        track_text++; // Skip the encoding byte
-                    }
-                }
-
-                // Prepare a clean buffer for the track text
-                char cleaned_content[20] = {0};
-                strncpy(cleaned_content, track_text, sizeof(cleaned_content) - 1);
-
-                // Remove unexpected non-printable characters (if any)
-                for (size_t i = 0; i < strlen(cleaned_content); i++)
+                if (!isprint(cleaned_content[i]))
                 {
-                    if (!isprint(cleaned_content[i]))
-                    {
-             //           printf("DEBUG: Non-printable char found in TRCK at index %zu\n", i);
-                        cleaned_content[i] = '\0'; // Terminate at first non-printable char
-                        break;
-                    }
-                }
-
-              //  printf("DEBUG: Cleaned TRCK Content = [%s] (Length: %lu)\n", cleaned_content, strlen(cleaned_content));
-
-                // Try to parse as "track/total"
-                if (sscanf(cleaned_content, "%d/%d", &track_num, &total_track) >= 1)
-                {
-                    tag_data->track = track_num;
-                    tag_data->total_track = (total_track > 0) ? total_track : 0;
-                 //   printf("DEBUG: Extracted Track = %d, Total Tracks = %d\n", track_num, total_track);
-                }
-                // Try to parse as a simple number
-                else if (sscanf(cleaned_content, "%d", &track_num) == 1)
-                {
-                    tag_data->track = track_num;
-                 //   printf("DEBUG: Extracted Track = %d\n", track_num);
-                }
-                else
-                {
-                    tag_data->track = 0;
-                //    printf("DEBUG: TRCK Parsing Failed\n");
+                    cleaned_content[i] = '\0';
+                    break;
                 }
             }
-            else
+
+            // Parse track number
+            if (sscanf(cleaned_content, "%d/%d", &track_num, &total_track) >= 1)
             {
-                tag_data->track = 0;
-              //  printf("DEBUG: TRCK Content is NULL or Empty\n");
+                tag_data->track = track_num;
+                tag_data->total_track = (total_track > 0) ? total_track : 0;
             }
+            else if (sscanf(cleaned_content, "%d", &track_num) == 1)
+            {
+                tag_data->track = track_num;
+            }
+
+            free(content);
         }
-
-        // Handle other frame types
-        if (strncmp(frame_id, "TIT2", 4) == 0 || strncmp(frame_id, "TT2", 3) == 0)
+        else if (strncmp(frame_id, "TIT2", 4) == 0 || strncmp(frame_id, "TT2", 3) == 0)
         {
             SAFE_FREE(tag_data->title);
             tag_data->title = content;
@@ -538,7 +621,8 @@ TagData *read_id3v2_tags(const char *filename)
             SAFE_FREE(tag_data->album);
             tag_data->album = content;
         }
-        else if (strncmp(frame_id, "TYER", 4) == 0 || strncmp(frame_id, "TDRC", 4) == 0 || strncmp(frame_id, "TYE", 3) == 0)
+        else if (strncmp(frame_id, "TYER", 4) == 0 || strncmp(frame_id, "TDRC", 4) == 0 ||
+                 strncmp(frame_id, "TYE", 3) == 0)
         {
             SAFE_FREE(tag_data->year);
             tag_data->year = content;
@@ -551,18 +635,14 @@ TagData *read_id3v2_tags(const char *filename)
         else if (strncmp(frame_id, "TCON", 4) == 0 || strncmp(frame_id, "TCO", 3) == 0)
         {
             SAFE_FREE(tag_data->genre);
-            tag_data->genre = content;
+            char *normalized_genre = normalize_genre(content);
+            free(content);
+            tag_data->genre = normalized_genre;
         }
-        else if (strncmp(frame_id, "TRCK", 4) != 0) // Free only if not already handled by TRCK code
+        else
         {
-            SAFE_FREE(content);
+            free(content);
         }
-    }
-
-    // After scanning all frames, report if TRCK was not found
-    if (!found_trck)
-    {
-        printf("DEBUG: TRCK frame was not found in the file\n");
     }
 
     SAFE_FREE(buffer);
@@ -575,6 +655,10 @@ TagData *read_id3v2_tags(const char *filename)
     fclose(file);
     return tag_data;
 }
+
+/**
+ * @brief Reads ID3v1 tags from an MP3 file
+ */
 TagData *read_id3v1_tags(const char *filename)
 {
     FILE *fp = fopen(filename, "rb");
@@ -621,8 +705,8 @@ TagData *read_id3v1_tags(const char *filename)
     }
     else
     {
-        data->comment = strndup(tag + 97, 28); // Full 30 bytes for comment in ID3v1
-        data->track = -1;                      // No track number
+        data->comment = strndup(tag + 97, 30); // Full 30 bytes for comment in ID3v1
+        data->track = 0;                       // No track number
     }
 
     // Handle genre
@@ -640,6 +724,9 @@ TagData *read_id3v1_tags(const char *filename)
     return data;
 }
 
+/**
+ * @brief Displays metadata in a formatted way
+ */
 void display_metadata(const TagData *data)
 {
     if (!data)
@@ -663,29 +750,27 @@ void display_metadata(const TagData *data)
     printf("----------------------------------------\n");
 }
 
+/**
+ * @brief Reads and displays ID3 tags from a file
+ */
 void view_tags(const char *filename)
 {
-    //     // Try ID3v2 first
+    // Try ID3v2 first
     TagData *data = read_id3v2_tags(filename);
+
+    // Fall back to ID3v1 if ID3v2 fails
+    if (!data)
+    {
+        data = read_id3v1_tags(filename);
+    }
+
     if (data)
     {
         display_metadata(data);
         free_tag_data(data);
     }
-
-    // Fall back to ID3v1 if ID3v2 fails
-    if (!data)
+    else
     {
-        //    TagData *data  = read_id3v1_tags(filename);
-        data = read_id3v1_tags(filename);
-        if (data)
-        {
-            display_metadata(data);
-            free_tag_data(data);
-        }
-        else
-        {
-            display_error("No ID3 tags found in file");
-        }
+        display_error("No ID3 tags found in file");
     }
 }
