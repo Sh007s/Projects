@@ -35,7 +35,7 @@ const char *genres[] = {
 /**
  * @brief Converts a synchsafe integer used in ID3 frames to a regular integer
  */
- unsigned int decode_synchsafe(const unsigned char bytes[4])
+unsigned int decode_synchsafe(const unsigned char bytes[4])
 {
     return ((bytes[0] & 0x7f) << 21) |
            ((bytes[1] & 0x7f) << 14) |
@@ -190,9 +190,6 @@ char *try_korean_encodings(const char *input, size_t input_len)
     return NULL;
 }
 
-/**
- * @brief Normalizes genre text for consistent display
- */
 char *normalize_genre(const char *raw_genre)
 {
     if (!raw_genre || strlen(raw_genre) == 0)
@@ -218,29 +215,19 @@ char *normalize_genre(const char *raw_genre)
     {
         int genre_num = atoi(temp + 1);
         const int num_genres = sizeof(genres) / sizeof(genres[0]);
-
         if (genre_num >= 0 && genre_num < num_genres)
         {
             result = strdup(genres[genre_num]);
         }
         else if (genre_num == 255)
         {
-            // Handle custom genre code
             char *paren_end = strchr(temp, ')');
-            if (paren_end && strlen(paren_end) > 1)
-            {
-                result = strdup(paren_end + 1);
-            }
-            else
-            {
-                result = strdup("Custom");
-            }
+            result = (paren_end && strlen(paren_end) > 1) ? strdup(paren_end + 1) : strdup("Custom");
         }
         else
         {
             result = strdup("Unknown");
         }
-
         free(temp);
         return result;
     }
@@ -256,8 +243,6 @@ char *normalize_genre(const char *raw_genre)
     if (strstr(temp, ".com") || strstr(temp, ".org") || strstr(temp, ".net") ||
         strstr(temp, "www.") || strstr(temp, "http"))
     {
-
-        // Extract language information if present
         const char *languages[] = {"tamil", "telugu", "hindi", "malayalam", "kannada"};
         const char *results[] = {"Tamil Song", "Telugu", "Hindi", "Malayalam", "Kannada"};
         const int langs_count = sizeof(languages) / sizeof(languages[0]);
@@ -270,7 +255,6 @@ char *normalize_genre(const char *raw_genre)
                 return strdup(results[i]);
             }
         }
-
         free(temp);
         return strdup("Unknown");
     }
@@ -278,16 +262,13 @@ char *normalize_genre(const char *raw_genre)
     // Check for Indian language music genres
     const char *indian_languages[] = {"tamil", "telugu", "hindi", "malayalam", "kannada", "marathi", "punjabi", "bengali"};
     const int num_languages = sizeof(indian_languages) / sizeof(indian_languages[0]);
-
     for (int i = 0; i < num_languages; i++)
     {
         if (strstr(temp, indian_languages[i]))
         {
-            // Capitalize first letter for proper format
             char *capitalized = strdup(indian_languages[i]);
             capitalized[0] = toupper(capitalized[0]);
 
-            // Check if "song" is in the genre
             if (strstr(temp, "song"))
             {
                 char *combined = malloc(strlen(capitalized) + 6); // +6 for " Song" and null terminator
@@ -299,7 +280,6 @@ char *normalize_genre(const char *raw_genre)
                     return combined;
                 }
             }
-
             free(temp);
             return capitalized;
         }
@@ -312,25 +292,15 @@ char *normalize_genre(const char *raw_genre)
         return strdup("OST");
     }
 
-    // If none of the above conditions match, clean up the string and return it
     // Trim whitespace
     char *start = temp;
     char *end = temp + strlen(temp) - 1;
-
     while (isspace(*start))
         start++;
     while (end > start && isspace(*end))
         *end-- = '\0';
 
-    if (strlen(start) == 0)
-    {
-        free(temp);
-        return strdup("Unknown");
-    }
-
-    // Capitalize first letter
-    start[0] = toupper(start[0]);
-    result = strdup(start);
+    result = (strlen(start) == 0) ? strdup("Unknown") : strdup(start);
     free(temp);
     return result;
 }
@@ -572,6 +542,8 @@ TagData *read_id3v2_tags(const char *filename)
         if (!content)
             continue;
 
+        //   printf("DEBUG: Processing frame_id: '%s' with content: '%s'\n", frame_id, content);
+
         // Handle different frame types
         if (strncmp(frame_id, "TRCK", 4) == 0)
         {
@@ -632,10 +604,13 @@ TagData *read_id3v2_tags(const char *filename)
             SAFE_FREE(tag_data->comment);
             tag_data->comment = content;
         }
-        else if (strncmp(frame_id, "TCON", 4) == 0 || strncmp(frame_id, "TCO", 3) == 0)
+        else if ((strncmp(frame_id, "TCON", 4) == 0) && (strncmp(frame_id, "TCO", 3) == 0))
         {
+            //      printf("DEBUG: Processing frame_id: '%s'\n", frame_id);
             SAFE_FREE(tag_data->genre);
+            //     printf("DEBUG: Raw Genre content: '%s'\n", content);
             char *normalized_genre = normalize_genre(content);
+            //    printf("DEBUG: Normalized Genre: '%s'\n", normalized_genre);
             free(content);
             tag_data->genre = normalized_genre;
         }
