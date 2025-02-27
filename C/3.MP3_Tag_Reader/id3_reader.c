@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <ctype.h>
 #include <string.h>
+#include "genre_utils.h"
 
 // Supported Korean character encodings
 const char *korean_encodings[] = {"EUC-KR", "CP949", "UHC", "JOHAB", NULL};
@@ -623,6 +624,7 @@ TagData *read_id3v1_tags(const char *filename)
     if (!fp)
     {
         display_error("Failed to open file");
+        printf("Write function\n");
         return NULL;
     }
 
@@ -694,7 +696,7 @@ void display_metadata(const TagData *data)
     }
 
     printf("\n   MP3 Tag Reader & Editor:\n");
-    printf("\n----------------cle------------------------\n");
+    printf("\n-------------------------------------------\n");
     printf("\nVersion  ID : %s\n", data->version ? data->version : "Unknown");
     printf("Title       : %s\n", data->title ? data->title : "Unknown");
     printf("Album       : %s\n", data->album ? data->album : "Unknown");

@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
 
         if (ext != NULL && strcmp(ext, ".mp3") == 0)
         {
-             view_tags(argv[2]);
+            view_tags(argv[2]);
         }
         else
         {
@@ -70,9 +70,10 @@ int main(int argc, char *argv[])
 
     else if (strcmp(argv[1], "-e") == 0 && argc == 5)
     {
-        char *tag = argv[2];
-        char *filename = argv[3];
+        char *tag = argv[3];
+        char *filename = argv[2];
         char *value = argv[4];
+       
         if (edit_tag(filename, tag, value) != 0)
         {
             display_error("Failed to edit tag.");

@@ -14,6 +14,7 @@ TagData *create_tag_data()
     data->year = NULL;
     data->comment = NULL;
     data->genre = NULL;
+    data->genre_code = 0;
 
     data->track = 0; // Initialize other fields as needed
     data ->total_track = 0;
@@ -32,6 +33,7 @@ void free_tag_data(TagData *data)
     free(data->year);
     free(data->comment);
     free(data->genre);
+  //  free(data ->genre_code);
    // free(data->track);
     // Free other fields as needed
     free(data);

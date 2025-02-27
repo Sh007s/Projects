@@ -3,6 +3,8 @@
 
 #include "id3_utils.h"
 
+#define MAX_TAG_SIZE 1024 // Define an appropriate size
+
 /**
  * @brief Writes the ID3 tags to an MP3 file.
  *
@@ -10,7 +12,7 @@
  * @param data Pointer to the TagData structure containing the ID3 tags.
  * @return 0 on success, non-zero on failure.
  */
-int write_id3_tags(const char *filename, const TagData *data);
+int write_id3_tags(const char *filename, TagData *data);
 
 /**
 TODO: Add documention as sample given above
