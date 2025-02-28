@@ -25,6 +25,8 @@
         }             \
     } while (0)
 
+
+extern const char *genres[];
 struct ID3v2_header
 {
     char identifier[3];

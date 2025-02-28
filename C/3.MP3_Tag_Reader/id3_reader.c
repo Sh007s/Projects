@@ -14,20 +14,6 @@
 // Supported Korean character encodings
 const char *korean_encodings[] = {"EUC-KR", "CP949", "UHC", "JOHAB", NULL};
 
-// ID3v1 Genre list
-const char *genres[] = {
-    "Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop",
-    "Jazz", "Metal", "New Age", "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae",
-    "Rock", "Techno", "Industrial", "Alternative", "Ska", "Death Metal", "Pranks",
-    "Soundtrack", "Euro-Techno", "Ambient", "Trip-Hop", "Vocal", "Jazz+Funk", "Fusion",
-    "Trance", "Classical", "Instrumental", "Acid", "House", "Game", "Sound Clip",
-    "Gospel", "Noise", "AlternRock", "Bass", "Soul", "Punk", "Space", "Meditative",
-    "Instrumental Pop", "Instrumental Rock", "Ethnic", "Gothic", "Darkwave", "Techno-Industrial",
-    "Electronic", "Pop-Folk", "Eurodance", "Dream", "Southern Rock", "Comedy", "Cult",
-    "Gangsta", "Top 40", "Christian Rap", "Pop/Funk", "Jungle", "Native American", "Cabaret",
-    "New Wave", "Psychadelic", "Rave", "Showtunes", "Trailer", "Lo-Fi", "Tribal",
-    "Acid Punk", "Acid Jazz", "Polka", "Retro", "Musical", "Rock & Roll", "Hard Rock"};
-
 /**
  * @brief Converts a synchsafe integer used in ID3 frames to a regular integer
  */
@@ -197,12 +183,11 @@ char *normalize_genre(const char *raw_genre)
     {
         *p = tolower(*p);
     }
-
+    printf("%s\n", genres[0]);
     // Handle numeric genre codes (ID3v1 standard)
     if (temp[0] == '(' && isdigit(temp[1]))
     {
         int genre_num = atoi(temp + 1);
-        const int num_genres = sizeof(genres) / sizeof(genres[0]);
         if (genre_num >= 0 && genre_num < num_genres)
         {
             result = strdup(genres[genre_num]);
@@ -671,7 +656,7 @@ TagData *read_id3v1_tags(const char *filename)
 
     // Handle genre
     unsigned char genre_code = tag[127];
-    if (genre_code < sizeof(genres) / sizeof(genres[0]))
+    if (genre_code < num_genres)
     {
         data->genre = strdup(genres[genre_code]);
     }

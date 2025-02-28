@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 // Genre list from ID3v1 standard
-const char *genres1[] = {
+const char *genres[] = {
     "Blues", "Classic Rock", "Country", "Dance", "Disco", "Funk", "Grunge", "Hip-Hop", "Jazz",
     "Metal", "New Age", "Oldies", "Other", "Pop", "R&B", "Rap", "Reggae", "Rock", "Techno", "Industrial",
     "Alternative", "Ska", "Death Metal", "Pranks", "Soundtrack", "Euro-Techno", "Ambient", "Trip-Hop",
@@ -16,10 +16,12 @@ const char *genres1[] = {
     "Hard Rock"
 };
 
+const int num_genres = sizeof(genres) / sizeof(genres[0]);
+
 // Function to get the genre code by name
 int get_genre_code_by_name(const char *genre) {
-    for (int i = 0; i < sizeof(genres1) / sizeof(genres1[0]); i++) {
-        if (strcasecmp(genres1[i], genre) == 0) {
+    for (int i = 0; i < sizeof(genres) / sizeof(genres[0]); i++) {
+        if (strcasecmp(genres[i], genre) == 0) {
             return i;
         }
     }
